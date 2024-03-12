@@ -8,20 +8,34 @@ from flask_login import UserMixin, login_user, LoginManager, login_required, cur
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret-key-goes-here'
 
+#config Flask_login
+login_manager = LoginManager()
+login_manager.init_app(app)
+
 # CREATE DATABASE
 class Base(DeclarativeBase):
     pass
+
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
 db = SQLAlchemy(model_class=Base)
 db.init_app(app)
 
+
+@login_manager.user_loader
+def load_user(user_id):
+    return db.get_or_404(User, user_id)
+
+
 # CREATE TABLE IN DB
-class User(db.Model):
+class User(UserMixin, db.Model):
+    #UserMixin gives methods like: is_authenticated(),is_active(),is_anonymous(),get_id()
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String(100), unique=True)
     password: Mapped[str] = mapped_column(String(100))
     name: Mapped[str] = mapped_column(String(1000))
- 
+
+# Create a user_loader callback
+
 with app.app_context():
     db.create_all()
 
@@ -45,28 +59,45 @@ def register():
         )
         db.session.add(new_user)
         db.session.commit()
-        user_name= request.form.get('name')
+        # Log in and authenticate user after adding details to database.
+        # also sets the current_user of the session/UserMixin inheritance
+        login_user(new_user)
 
-        return render_template('secrets.html', user_name=user_name )
+        return render_template('secrets.html')
     return render_template("register.html")
 
 
-@app.route('/login')
+
+@app.route('/login', methods=['GET', 'POST'])
 def login():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
+
+    #     find user by email:
+        user= User.query.filter_by(email=email).first()
+        if check_password_hash(user.password, password):
+            # provided by UserMixin
+            login_user(user) #also sets the current_user of the session/UserMixin inheritance
+            return redirect(url_for('secrets'))
     return render_template("login.html")
 
-
+# Only logged-in users can access the route prov by UserMixin
 @app.route('/secrets')
+@login_required  #UserMixin
 def secrets():
-    return render_template("secrets.html")
+    return render_template("secrets.html", name = current_user.name)
 
 
 @app.route('/logout')
 def logout():
-    pass
+    logout_user()
+    return redirect(url_for('home'))
+
 
 
 @app.route('/download')
+@login_required  #UserMixin
 def download():
     return send_from_directory(directory='static', path="files/cheat_sheet.pdf" )
     #the directory should be relative to the rooth path
