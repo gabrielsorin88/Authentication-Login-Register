@@ -49,19 +49,24 @@ def home():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        #hashing users password
-        plain_text_pw = request.form.get('password')
-        hash_password = generate_password_hash(plain_text_pw, method='pbkdf2:sha256', salt_length=8)
-        new_user = User(
-            email= request.form.get('email'),
-            name=request.form.get('name'),
-            password = hash_password
-        )
-        db.session.add(new_user)
-        db.session.commit()
-        # Log in and authenticate user after adding details to database.
-        # also sets the current_user of the session/UserMixin inheritance
-        login_user(new_user)
+        user = User.query.filter_by(email = request.form.get('email') ).first()
+        if user :
+            flash("You've already signed up with that email, log in instead!")
+            return redirect(url_for('login'))
+        else:
+            # hashing users password
+            plain_text_pw = request.form.get('password')
+            hash_password = generate_password_hash(plain_text_pw, method='pbkdf2:sha256', salt_length=8)
+            new_user = User(
+                email= request.form.get('email'),
+                name=request.form.get('name'),
+                password = hash_password
+            )
+            db.session.add(new_user)
+            db.session.commit()
+            # Log in and authenticate user after adding details to database.
+            # also sets the current_user of the session/UserMixin inheritance
+            login_user(new_user)
 
         return render_template('secrets.html')
     return render_template("register.html")
@@ -75,11 +80,19 @@ def login():
         password = request.form.get('password')
 
     #     find user by email:
-        user= User.query.filter_by(email=email).first()
-        if check_password_hash(user.password, password):
-            # provided by UserMixin
+
+        user = User.query.filter_by(email=email).first()
+        # Email doesn't exist or password incorrect.
+        if not user:
+            flash("That email does not exist, please try again.")
+            return redirect(url_for('login'))
+        elif not check_password_hash(user.password, password): # provided by UserMixin
+            flash('Password incorrect, please try again.')
+            return redirect(url_for('login'))
+        else:
             login_user(user) #also sets the current_user of the session/UserMixin inheritance
             return redirect(url_for('secrets'))
+
     return render_template("login.html")
 
 # Only logged-in users can access the route prov by UserMixin
